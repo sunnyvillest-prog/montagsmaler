@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Montagsmaler - Malen & Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .drawing-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 4px solid #333;
+            background-color: #fff;
+            cursor: crosshair;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin-top: 15px;
+        }
+        button, input {
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        /* Chat-Bereich Styling */
+        .chat-section {
+            width: 350px;
+            height: 500px;
+            background: white;
+            border: 4px solid #333;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .chat-header {
+            background: #333;
+            color: white;
+            padding: 10px;
+            font-weight: bold;
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+        .chat-message {
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 10px;
+            gap: 5px;
+        }
+        .chat-input-area input {
+            flex: 1;
+            padding: 8px;
+            font-size: 14px;
+        }
+        .chat-input-area button {
+            padding: 8px 12px;
+            font-size: 14px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Montagsmaler - Prototyp</h1>
+    
+    <div class="game-container">
+        <!-- Linke Seite: Malen -->
+        <div class="drawing-section">
+            <canvas id="malflaeche" width="700" height="500"></canvas>
+            <div class="controls">
+                <label for="colorPicker">Farbe:</label>
+                <input type="color" id="colorPicker" value="#000000">
+                
+                <label for="brushSize">Größe:</label>
+                <input type="range" id="brushSize" min="1" max="20" value="5">
+                
+                <button id="clearBtn" style="background-color: #ff4d4d; color: white; border: none; border-radius: 5px;">Bild löschen</button>
+            </div>
+        </div>
+
+        <!-- Rechte Seite: Chat / Raten -->
+        <div class="chat-section">
+            <div class="chat-header">Chat & Rateversuche</div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-message"><em>System: Willkommen bei Montagsmaler! Schreib deinen Rateversuch in den Chat.</em></div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Begriff raten...">
+                <button id="sendBtn">Senden</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- MAL-LOGIK ---
+        const canvas = document.getElementById('malflaeche');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('colorPicker');
+        const brushSize = document.getElementById('brushSize');
+        const clearBtn = document.getElementById('clearBtn');
+
+        let isDrawing = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            ctx.beginPath();
+            ctx.moveTo(e.offsetX, e.offsetY);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            ctx.strokeStyle = colorPicker.value;
+            ctx.lineWidth = brushSize.value;
+            ctx.lineCap = 'round';
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+        });
+
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+        clearBtn.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        // --- CHAT-LOGIK ---
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function addMessage(text, sender = "Du") {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('chat-message');
+            msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            chatMessages.appendChild(msgDiv);
+            // Automatisch nach unten scrollen
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleSendMessage() {
+            const text = chatInput.value.trim();
+            if (text === "") return;
+
+            addMessage(text, "Du");
+            chatInput.value = "";
+
+            // Kleine Test-Antwort vom "System", damit man sieht, dass es reagiert
+            setTimeout(() => {
+                if(text.toLowerCase() === "haus") {
+                    addMessage("Richtig geraten! Das war das gesuchte Wort.", "🎉 System");
+                }
+            }, 500);
+        }
+
+        sendBtn.addEventListener('click', handleSendMessage);
+        
+        // Nachricht abschicken, wenn man Enter drückt
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+    </script>
+
+</body>
+</html>
