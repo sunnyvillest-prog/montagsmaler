@@ -17,6 +17,20 @@ let rooms = {}; // roomId -> { password, maxRounds, currentRound, drawer, word, 
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
+    // Offene Räume abrufen
+    socket.on('get-rooms', () => {
+        let roomList = {};
+        for (let rName in rooms) {
+            // Nur Räume anzeigen, die noch nicht voll sind oder aktiv laufen
+            roomList[rName] = {
+                playerCount: io.sockets.adapter.rooms.get(rName)?.size || 0,
+                maxRounds: rooms[rName].maxRounds,
+                currentRound: rooms[rName].currentRound
+            };
+        }
+        socket.emit('room-list', roomList);
+    });
+
     // Raum beitreten oder erstellen mit Rundenwahl & Passwort
     socket.on('join-room', ({ roomName, password, totalRounds }) => {
         socket.roomName = roomName || 'lobby';
