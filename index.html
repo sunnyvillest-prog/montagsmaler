@@ -41,7 +41,10 @@
         #chat-input { flex: 1; padding: 8px; border: none; outline: none; font-size: 13px; background: #fff; }
         .chat-input-area button { padding: 8px 14px; background: #2ecc71; color: white; border: none; cursor: pointer; font-weight: bold; }
 
-        #word-display { font-size: 18px; font-weight: bold; color: #e74c3c; margin-bottom: 10px; }
+        .game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #word-display { font-size: 16px; font-weight: bold; color: #e74c3c; }
+        #timer-display { font-size: 16px; font-weight: bold; background: #f39c12; color: white; padding: 4px 10px; border-radius: 4px; }
+        
         .score-list { list-style: none; padding: 0; margin: 0; font-size: 14px; }
         .score-list li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; }
     </style>
@@ -80,7 +83,10 @@
     <div id="game-screen">
         <div class="container">
             <div class="game-area">
-                <div id="word-display">Warte auf Mitspieler...</div>
+                <div class="game-header">
+                    <div id="word-display">Warte auf Mitspieler...</div>
+                    <div id="timer-display">⏱️ 02:00</div>
+                </div>
                 
                 <canvas id="canvas" width="560" height="400"></canvas>
                 
@@ -210,6 +216,28 @@
             window.location.href = 'about:blank';
         });
 
+        // Timer Logik
+        let countdownInterval = null;
+        function startTimer(durationInSeconds) {
+            clearInterval(countdownInterval);
+            let timer = durationInSeconds;
+            const timerDisplay = document.getElementById('timer-display');
+
+            countdownInterval = setInterval(() => {
+                let minutes = Math.floor(timer / 60);
+                let seconds = timer % 60;
+
+                minutes = minutes < 10 ? '0' + minutes : minutes;
+                seconds = seconds < 10 ? '0' + seconds : seconds;
+
+                timerDisplay.innerText = `⏱️ ${minutes}:${seconds}`;
+
+                if (--timer < 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+        }
+
         // Canvas Setup
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -263,24 +291,27 @@
 
         socket.on('new-round', (data) => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            startTimer(data.duration); // Timer starten (120 Sekunden)
+
             if (data.drawerId === socket.id) {
                 isMyTurn = true;
                 document.getElementById('drawing-tools').style.display = 'block';
             } else {
                 isMyTurn = false;
                 document.getElementById('drawing-tools').style.display = 'none';
-                document.getElementById('word-display').innerText = `Runde ${data.round}/${data.maxRounds}: Rate den Begriff im Chat!`;
+                document.getElementById('word-display').innerText = `Runde ${data.round}/${data.maxRounds}: Rate den Begriff!`;
             }
         });
 
         socket.on('your-word', (word) => {
-            document.getElementById('word-display').innerText = `Du musst malen: ${word.toUpperCase()}`;
+            document.getElementById('word-display').innerText = `Du malst: ${word.toUpperCase()}`;
         });
 
         socket.on('game-over', () => {
             isMyTurn = false;
+            clearInterval(countdownInterval);
             document.getElementById('drawing-tools').style.display = 'none';
-            document.getElementById('word-display').innerText = "Spiel beendet! Du kannst in die Lobby zurückkehren.";
+            document.getElementById('word-display').innerText = "Spiel beendet! Kehre zur Lobby zurück...";
             setTimeout(() => {
                 window.location.reload();
             }, 5000);
