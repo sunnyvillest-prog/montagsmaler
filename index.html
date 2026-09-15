@@ -124,7 +124,10 @@
             socket.emit('set-username', { username, isAdmin });
             refreshRooms();
         }
-
+        // Automatische Aktualisierung der Raumliste, wenn sich Räume ändern
+        socket.on('room-list-update', () => {
+            refreshRooms();
+        });
         function refreshRooms() {
             socket.emit('get-rooms');
         }
