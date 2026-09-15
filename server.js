@@ -1,5 +1,5 @@
 const express = require('express');
-const http = http = require('http'); // Falls du http/express nutzt wie bisher:
+const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -35,7 +35,7 @@ io.on('connection', (socket) => {
         if (!rooms[socket.roomName]) {
             rooms[socket.roomName] = {
                 password: password || '',
-                maxRounds: Math.min(Math.max(parseInt(totalRounds) || 5, 5), 20), // 5 bis 20 Runden
+                maxRounds: Math.min(Math.max(parseInt(totalRounds) || 5, 5), 20),
                 maxPlayers: Math.min(Math.max(parseInt(maxPlayers) || 2, 2), 10),
                 currentRound: 0,
                 currentDrawer: null,
@@ -173,10 +173,16 @@ function startRound(roomName) {
     room.currentWord = words[Math.floor(Math.random() * words.length)];
 
     io.to(room.currentDrawer).emit('your-word', room.currentWord);
-    io.to(roomName).emit('new-round', { drawerId: room.currentDrawer, round: room.currentRound, maxRounds: room.maxRounds });
+    
+    // Sende Runden-Info inkl. 120 Sekunden (2 Minuten) Zeitlimit an alle
+    io.to(roomName).emit('new-round', { 
+        drawerId: room.currentDrawer, 
+        round: room.currentRound, 
+        maxRounds: room.maxRounds,
+        duration: 120 
+    });
 
     clearTimeout(room.timer);
-    // Exakt 2 Minuten Zeit pro Runde
     room.timer = setTimeout(() => {
         io.to(roomName).emit('chat-message', { username: 'System', message: `⏰ Zeit abgelaufen! Das gesuchte Wort war: "${room.currentWord}"` });
         nextRound(roomName);
