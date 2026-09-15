@@ -1,39 +1,98 @@
 const express = require('express');
-const http = require('http');
+const http = http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*" } // Erlaubt Verbindungen von deiner Foren-Domain
+    cors: { origin: "*" }
 });
 
-app.use(express.static('public')); // Hier liegen später HTML/JS für das Spiel
+app.use(express.static('public'));
+
+// Eine kleine Beispiel-Wortliste
+const words = ["Apfel", "Auto", "Gitarre", "Haus", "Sonne", "Baum", "Computer", "Katze"];
+
+let gameState = {
+    currentDrawer: null,
+    currentWord: "",
+    scores: {}
+};
 
 io.on('connection', (socket) => {
-    console.log('Ein Spieler verbunden:', socket.id);
+    console.log('Spieler verbunden:', socket.id);
 
-    // Mal-Daten an alle anderen im Raum senden
+    // Spieler registrieren (mit Namen aus dem Forum)
+    socket.on('set-username', (username) => {
+        socket.username = username;
+        gameState.scores[socket.id] = { username: username, points: 0 };
+        
+        // Wenn das der erste Spieler ist, wird er gleich zum Maler
+        if (!gameState.currentDrawer) {
+            startNewRound(socket.id);
+        }
+        
+        io.emit('update-scores', gameState.scores);
+    });
+
+    // Mal-Daten weiterleiten
     socket.on('draw', (data) => {
         socket.broadcast.emit('draw', data);
     });
 
-    // Canvas leeren
     socket.on('clear', () => {
         socket.broadcast.emit('clear');
     });
 
     // Chat / Raten
     socket.on('chat-message', (data) => {
-        io.emit('chat-message', data); // An alle im Raum senden
+        const guess = data.message.trim().toLowerCase();
+        const correctWord = gameState.currentWord.toLowerCase();
+
+        if (guess === correctWord && socket.id !== gameState.currentDrawer) {
+            // Richtig geraten! Punkte vergeben
+            io.emit('chat-message', { username: 'System', message: `🎉 ${socket.username} hat das Wort "${gameState.currentWord}" erraten!` });
+            
+            gameState.scores[socket.id].points += 10; // 10 Punkte für den Raten
+            io.emit('update-scores', gameState.scores);
+
+            // Nächste Runde starten
+            startNewRound(socket.id);
+        } else {
+            // Normaler Chat-Eintrag
+            io.emit('chat-message', { username: socket.username, message: data.message });
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log('Spieler hat verlassen:', socket.id);
+        console.log('Spieler verlassen:', socket.id);
+        delete gameState.scores[socket.id];
+        if (socket.id === gameState.currentDrawer) {
+            // Neuen Maler bestimmen, falls der aktuelle geht...
+            const remainingPlayers = Object.keys(gameState.scores);
+            if (remainingPlayers.length > 0) {
+                startNewRound(remainingPlayers[0]);
+            } else {
+                gameState.currentDrawer = null;
+            }
+        }
+        io.emit('update-scores', gameState.scores);
     });
 });
 
+// Funktion für den Start einer neuen Runde
+function startNewRound(newDrawerId) {
+    gameState.currentDrawer = newDrawerId;
+    gameState.currentWord = words[Math.floor(Math.random() * words.length)];
+
+    // Dem neuen Maler sein geheimes Wort schicken
+    io.to(newDrawerId).emit('your-word', gameState.currentWord);
+
+    // Allen anderen sagen, dass eine neue Runde läuft
+    io.emit('new-round', { drawerId: newDrawerId });
+}
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Montagsmaler läuft auf Port ${PORT}`);
+    console.log(`Server läuft auf Port ${PORT}`);
 });
