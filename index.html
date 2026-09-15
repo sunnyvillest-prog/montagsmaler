@@ -8,14 +8,15 @@
 <style>
         body { font-family: Arial, sans-serif; background: transparent; margin: 0; padding: 10px; color: #333; }
         
-        /* Lobby / Raum-Auswahl (Passt sich flexibel dem Inhalt an und wird nicht mehr abgeschnitten) */
-        #lobby-screen { width: 100%; max-width: 800px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); box-sizing: border-box; height: auto; overflow: visible; }
+        /* Lobby / Raum-Auswahl: Passt sich dem Inhalt an ohne Überhang */
+        #lobby-screen { width: 100%; max-width: 800px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); box-sizing: border-box; display: flex; flex-direction: column; }
         .lobby-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; text-align: center; }
+        .lobby-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .lobby-section input, .lobby-section select { padding: 10px; font-size: 14px; width: 100%; max-width: 400px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         .lobby-section button { padding: 10px 20px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
         .lobby-section button:hover { background: #27ae60; }
         
-        #room-list-ul { list-style: none; padding: 0; text-align: left; max-height: 250px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; background: #fff; }
+        #room-list-ul { list-style: none; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; background: #fff; box-sizing: border-box; }
         #room-list-ul li { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fafafa; }
         #room-list-ul li:nth-child(even) { background: #fff; }
         .room-info { flex: 1; font-size: 14px; }
