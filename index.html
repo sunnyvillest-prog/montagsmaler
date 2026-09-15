@@ -111,7 +111,7 @@
         </div>
     </div>
 
-  <script>
+    <script>
         const socket = io();
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -124,10 +124,12 @@
             socket.emit('set-username', { username, isAdmin });
             refreshRooms();
         }
+
         // Automatische Aktualisierung der Raumliste, wenn sich Räume ändern
         socket.on('room-list-update', () => {
             refreshRooms();
         });
+
         function refreshRooms() {
             socket.emit('get-rooms');
         }
@@ -142,23 +144,23 @@
                 return;
             }
 
-roomKeys.forEach(rName => {
+            roomKeys.forEach(rName => {
                 const rData = rooms[rName];
                 const li = document.createElement('li');
                 
-                // Wir bauen ein direktes Eingabefeld ein
-                li.innerHTML = `
-                    <div class="room-info">
-                        <strong>${rName}</strong> 🔒 <br>
-                        <span style="font-size:12px; color:#7f8c8d;">${rData.playerCount || 0} Spieler</span>
-                    </div>
-                    <div class="room-actions">
-                        <input type="password" id="pass-${rName}" placeholder="Passwort hier..." style="border: 2px solid red; width: 140px;">
-                        <button onclick="enterRoom('${rName}', document.getElementById('pass-${rName}').value, 2)">Beitreten</button>
-                    </div>
-                `;
+                const safeId = rName.replace(/[^a-zA-Z0-9_-]/g, '_');
+                let lockIcon = rData.hasPassword ? ' 🔒' : '';
+                
+                let actionsHtml = `<div class="room-actions">`;
+                if (rData.hasPassword) {
+                    actionsHtml += `<input type="password" id="pass-${safeId}" placeholder="Passwort...">`;
+                }
+                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}', ${rData.hasPassword})">Beitreten</button></div>`;
+
+                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler</span></div>` + actionsHtml;
                 listUl.appendChild(li);
             });
+        });
 
         function createRoom() {
             const roomName = document.getElementById('new-room-name').value.trim();
@@ -172,14 +174,13 @@ roomKeys.forEach(rName => {
             enterRoom(roomName, password, maxPlayers);
         }
 
-        function joinSpecificRoom(roomName, safeId) {
+        function joinSpecificRoom(roomName, safeId, hasPassword) {
             let password = '';
-            const passInput = document.getElementById(`pass-${safeId}`);
-            if (passInput) {
-                password = passInput.value;
-            }
-            enterRoom(roomName, password, 2);
-        }
+            if (hasPassword) {
+                const passInput = document.getElementById(`pass-${safeId}`);
+                if (passInput) {
+                    password = passInput.value;
+                }
             }
             enterRoom(roomName, password, 2);
         }
