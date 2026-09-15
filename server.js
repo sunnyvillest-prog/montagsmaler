@@ -179,7 +179,7 @@ app.use(express.json());
 app.get('/api/words', (req, res) => res.json(words));
 app.post('/api/words/add', (req, res) => {
     if (req.body.word) {
-        words.words.push(req.body.word.trim());
+        words.push(req.body.word.trim()); // Korrigiert von words.words.push zu words.push
         res.json({ success: true, words });
     }
 });
