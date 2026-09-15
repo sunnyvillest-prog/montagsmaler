@@ -93,9 +93,23 @@ io.on('connection', (socket) => {
 
     socket.on('set-username', (data) => {
         if (!data || !data.username || data.username.startsWith('Gast_')) {
-            socket.disconnect();
-            return;
+        socket.on('disconnect', () => {
+        if (socket.roomName && rooms[socket.roomName]) {
+            const room = rooms[socket.roomName];
+            delete room.scores[socket.id];
+            io.to(socket.roomName).emit('update-scores', room.scores);
+            
+            const playerCount = Object.keys(room.scores).length;
+            if (!room.currentDrawer && playerCount > 0) {
+                io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
+            }
+            // Raum aufräumen wenn komplett leer
+            if (playerCount === 0) {
+                clearTimeout(room.timer);
+                delete rooms[socket.roomName];
+            }
         }
+    });
         socket.username = data.username;
         socket.isAdmin = data.isAdmin || false;
     });
