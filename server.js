@@ -1,5 +1,5 @@
 const express = require('express');
-const http = require('http'); // Kleine Korrektur hier (war doppelt: http = http = 'http')
+const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -26,10 +26,18 @@ const maxRounds = 5; // Nach 5 Runden werden die Highscores an dein Forum gesend
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
-    // Spieler registrieren (mit Namen aus dem Forum)
-    socket.on('set-username', (username) => {
-        socket.username = username;
-        gameState.scores[socket.id] = { username: username, points: 0 };
+    // Spieler registrieren (mit Objekt aus Username und Admin-Status)
+    socket.on('set-username', (data) => {
+        // Absolute Sicherheit: Keine Gäste oder unvollständige Daten erlauben
+        if (!data || !data.username || data.username.startsWith('Gast_')) {
+            socket.disconnect();
+            return;
+        }
+
+        socket.username = data.username;
+        socket.isAdmin = data.isAdmin || false; // Admin-Status speichern
+        
+        gameState.scores[socket.id] = { username: socket.username, points: 0 };
         
         // Wenn das der erste Spieler ist, wird er gleich zum Maler
         if (!gameState.currentDrawer) {
@@ -48,9 +56,29 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('clear');
     });
 
-    // Chat / Raten
+    // Chat / Raten / Admin-Befehle
     socket.on('chat-message', (data) => {
-        const guess = data.message.trim().toLowerCase();
+        if (!socket.username) return;
+
+        const messageText = data.message.trim();
+
+        // Prüfen, ob ein Admin den Ban-Befehl nutzt: /ban Benutzername
+        if (socket.isAdmin && messageText.startsWith('/ban ')) {
+            const targetName = messageText.substring(5).trim().toLowerCase();
+            
+            // Nach dem Spieler unter den verbundenen Sockets suchen
+            for (let [id, targetSocket] of io.of('/').sockets) {
+                if (targetSocket.username && targetSocket.username.toLowerCase() === targetName) {
+                    targetSocket.emit('banned', 'Du wurdest von einem Admin aus dem Spiel gebannt.');
+                    targetSocket.disconnect();
+                    io.emit('chat-message', { username: 'System', message: `🚫 ${targetSocket.username} wurde von einem Admin aus dem Spiel entfernt.` });
+                    break;
+                }
+            }
+            return; // Befehl nicht im Chat anzeigen
+        }
+
+        const guess = messageText.toLowerCase();
         const correctWord = gameState.currentWord.toLowerCase();
 
         if (guess === correctWord && socket.id !== gameState.currentDrawer) {
@@ -70,17 +98,19 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('Spieler verlassen:', socket.id);
-        delete gameState.scores[socket.id];
-        if (socket.id === gameState.currentDrawer) {
-            // Neuen Maler bestimmen, falls der aktuelle geht...
-            const remainingPlayers = Object.keys(gameState.scores);
-            if (remainingPlayers.length > 0) {
-                startNewRound(remainingPlayers[0]);
-            } else {
-                gameState.currentDrawer = null;
+        if (socket.id && gameState.scores[socket.id]) {
+            delete gameState.scores[socket.id];
+            if (socket.id === gameState.currentDrawer) {
+                // Neuen Maler bestimmen, falls der aktuelle geht...
+                const remainingPlayers = Object.keys(gameState.scores);
+                if (remainingPlayers.length > 0) {
+                    startNewRound(remainingPlayers[0]);
+                } else {
+                    gameState.currentDrawer = null;
+                }
             }
+            io.emit('update-scores', gameState.scores);
         }
-        io.emit('update-scores', gameState.scores);
     });
 });
 
