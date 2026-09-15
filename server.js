@@ -8,7 +8,7 @@ const io = new Server(server, {
     cors: { origin: "*" }
 });
 
-app.use(express.static('public'));
+app.use(express.static(__dirname));
 
 // Eine kleine Beispiel-Wortliste
 const words = ["Apfel", "Auto", "Gitarre", "Haus", "Sonne", "Baum", "Computer", "Katze"];
