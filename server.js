@@ -1,5 +1,5 @@
 const express = require('express');
-const http = http = require('http');
+const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -147,14 +147,12 @@ function handlePlayerLeave(socket) {
             const leftName = room.scores[socket.id].username;
             delete room.scores[socket.id];
             
-            // Spieler sofort aus der Bestenliste/Spielerliste für alle entfernen
             io.to(socket.roomName).emit('update-scores', room.scores);
             io.to(socket.roomName).emit('chat-message', { username: 'System', message: `🚪 ${leftName} hat den Raum verlassen.` });
         }
         
         const playerCount = Object.keys(room.scores).length;
 
-        // Wenn weniger als 2 Spieler übrig sind, Spiel abbrechen/pausieren
         if (playerCount < 2) {
             clearTimeout(room.timer);
             room.currentDrawer = null;
@@ -162,7 +160,6 @@ function handlePlayerLeave(socket) {
             io.to(socket.roomName).emit('game-stopped', 'Zu wenig Spieler im Raum. Das Spiel wurde unterbrochen.');
             io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
         } else if (room.currentDrawer === socket.id) {
-            // Wenn der aktuelle Maler den Raum verlässt, Runde abbrechen und zur nächsten springen
             clearTimeout(room.timer);
             io.to(socket.roomName).emit('chat-message', { username: 'System', message: `⚠️ Der Maler hat den Raum verlassen!` });
             nextRound(socket.roomName);
@@ -202,7 +199,6 @@ function startRound(roomName) {
     room.currentDrawer = playerIds[drawerIndex];
     room.currentWord = words[Math.floor(Math.random() * words.length)];
 
-    io.to(room.currentDrawer).emit('your-room-word', room.currentWord); // intern genutzt
     io.to(room.currentDrawer).emit('your-word', room.currentWord);
     
     io.to(roomName).emit('new-round', { 
