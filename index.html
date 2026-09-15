@@ -67,7 +67,7 @@
         </div>
     </div>
 
-    <script>
+   <script>
         const socket = io();
 
         // Benutzername und Admin-Status sicher aus der URL auslesen
@@ -79,14 +79,17 @@
         if (!username || username.startsWith('Gast_')) {
             document.body.innerHTML = '<div style="text-align:center; margin-top:100px; font-family:Arial;"><h2 style="color:#e74c3c;">⛔ Zugriff verweigert</h2><p>Dieses Spiel ist nur für registrierte Mitglieder zugänglich.</p></div>';
         } else {
-            // Anmeldedaten (Name + Admin-Rechte) an den Node.js-Server senden
+            // 1. Anmeldedaten an den Server senden
             socket.emit('set-username', { username, isAdmin });
+
+            // 2. Direkt der Standard-Lobby beitreten, damit das Spiel startet!
+            socket.emit('join-room', { roomName: 'lobby', password: '', totalRounds: 5 });
         }
 
         // Falls ein Admin den Spieler bannt / kickt
         socket.on('banned', (reason) => {
             alert(reason);
-            window.location.href = 'about:blank'; // Fenster leeren oder schließen
+            window.location.href = 'about:blank';
         });
 
         // Canvas Setup
