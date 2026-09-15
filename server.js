@@ -4,170 +4,189 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(__dirname));
 
-// Eine kleine Beispiel-Wortliste
-const words = ["Apfel", "Auto", "Gitarre", "Haus", "Sonne", "Baum", "Computer", "Katze"];
+// Wortliste (kann später auch aus einer JSON/DB geladen werden)
+let words = ["Apfel", "Auto", "Gitarre", "Haus", "Sonne", "Baum", "Computer", "Katze"];
 
-let gameState = {
-    currentDrawer: null,
-    currentWord: "",
-    scores: {}
-};
-
-// Runden-Zähler für das Spielende
-let roundsPlayed = 0;
-const maxRounds = 5; // Nach 5 Runden werden die Highscores an dein Forum gesendet
+// Aktive Räume für passwortgeschützte / private Runden
+let rooms = {}; // roomId -> { password, maxRounds, currentRound, drawer, word, scores, guessedThisRound, timer }
 
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
-    // Spieler registrieren (mit Objekt aus Username und Admin-Status)
+    // Raum beitreten oder erstellen mit Rundenwahl & Passwort
+    socket.on('join-room', ({ roomName, password, totalRounds }) => {
+        socket.roomName = roomName || 'lobby';
+        socket.join(socket.roomName);
+
+        if (!rooms[socket.roomName]) {
+            rooms[socket.roomName] = {
+                password: password || '',
+                maxRounds: Math.min(Math.max(totalRounds || 5, 5), 15), // Zwischen 5 und 15 Runden
+                currentRound: 0,
+                currentDrawer: null,
+                currentWord: '',
+                scores: {},
+                guessedCount: 0,
+                timer: null
+            };
+        }
+
+        const room = rooms[socket.roomName];
+
+        // Passwort-Check falls gesetzt
+        if (room.password && room.password !== password) {
+            socket.emit('error-msg', 'Falsches Passwort für diesen Raum!');
+            socket.leave(socket.roomName);
+            return;
+        }
+
+        room.scores[socket.id] = { username: socket.username, points: 0 };
+        io.to(socket.roomName).emit('update-scores', room.scores);
+
+        // Erste Runde starten, wenn noch keine läuft
+        if (!room.currentDrawer) {
+            startRound(socket.roomName);
+        }
+    });
+
     socket.on('set-username', (data) => {
-        // Absolute Sicherheit: Keine Gäste oder unvollständige Daten erlauben
         if (!data || !data.username || data.username.startsWith('Gast_')) {
             socket.disconnect();
             return;
         }
-
         socket.username = data.username;
-        socket.isAdmin = data.isAdmin || false; // Admin-Status speichern
-        
-        gameState.scores[socket.id] = { username: socket.username, points: 0 };
-        
-        // Wenn das der erste Spieler ist, wird er gleich zum Maler
-        if (!gameState.currentDrawer) {
-            startNewRound(socket.id);
-        }
-        
-        io.emit('update-scores', gameState.scores);
+        socket.isAdmin = data.isAdmin || false;
     });
 
-    // Mal-Daten weiterleiten
+    // Mal-Daten innerhalb des Raumes weiterleiten
     socket.on('draw', (data) => {
-        socket.broadcast.emit('draw', data);
+        if (!socket.roomName) return;
+        socket.to(socket.roomName).emit('draw', data);
     });
 
     socket.on('clear', () => {
-        socket.broadcast.emit('clear');
+        if (!socket.roomName) return;
+        socket.to(socket.roomName).emit('clear');
     });
 
-    // Chat / Raten / Admin-Befehle
+    // Chat, Raten (Wort wird ausgeblendet) und Admin-Befehle
     socket.on('chat-message', (data) => {
-        if (!socket.username) return;
+        if (!socket.username || !socket.roomName) return;
+        const room = rooms[socket.roomName];
+        if (!room) return;
 
         const messageText = data.message.trim();
 
-        // Prüfen, ob ein Admin den Ban-Befehl nutzt: /ban Benutzername
+        // Admin Ban Befehl
         if (socket.isAdmin && messageText.startsWith('/ban ')) {
             const targetName = messageText.substring(5).trim().toLowerCase();
-            
-            // Nach dem Spieler unter den verbundenen Sockets suchen
             for (let [id, targetSocket] of io.of('/').sockets) {
                 if (targetSocket.username && targetSocket.username.toLowerCase() === targetName) {
-                    targetSocket.emit('banned', 'Du wurdest von einem Admin aus dem Spiel gebannt.');
+                    targetSocket.emit('banned', 'Du wurdest von einem Admin gebannt.');
                     targetSocket.disconnect();
-                    io.emit('chat-message', { username: 'System', message: `🚫 ${targetSocket.username} wurde von einem Admin aus dem Spiel entfernt.` });
+                    io.to(socket.roomName).emit('chat-message', { username: 'System', message: `🚫 ${targetSocket.username} wurde gebannt.` });
                     break;
                 }
             }
-            return; // Befehl nicht im Chat anzeigen
+            return;
         }
 
         const guess = messageText.toLowerCase();
-        const correctWord = gameState.currentWord.toLowerCase();
+        const correctWord = room.currentWord.toLowerCase();
 
-        if (guess === correctWord && socket.id !== gameState.currentDrawer) {
-            // Richtig geraten! Punkte vergeben
-            io.emit('chat-message', { username: 'System', message: `🎉 ${socket.username} hat das Wort "${gameState.currentWord}" erraten!` });
+        // Prüfen ob richtig geraten
+        if (guess === correctWord && socket.id !== room.currentDrawer) {
+            // Richtiges Wort NICHT im Chat anzeigen! Nur Systemmeldung
+            io.to(socket.roomName).emit('chat-message', { username: 'System', message: `🎉 ${socket.username} hat das Wort erraten!` });
+
+            room.guessedCount++;
             
-            gameState.scores[socket.id].points += 10; // 10 Punkte für das Raten
-            io.emit('update-scores', gameState.scores);
+            // Gestaffelte Punkte nach Reihenfolge (1. Platz: 15 Pkt, 2. Platz: 10 Pkt, ab 3. Platz: 5 Pkt)
+            let earnedPoints = room.guessedCount === 1 ? 15 : (room.guessedCount === 2 ? 10 : 5);
+            room.scores[socket.id].points += earnedPoints;
 
-            // Nächste Runde starten
-            startNewRound(socket.id);
+            // Wenn erster Rater, bekommt der Maler dieselben Punkte wie der erste Rater!
+            if (room.guessedCount === 1 && room.scores[room.currentDrawer]) {
+                room.scores[room.currentDrawer].points += earnedPoints;
+            }
+
+            io.to(socket.roomName).emit('update-scores', room.scores);
+
+            // Wenn alle geraten haben oder Timer läuft, nächste Runde einleiten
+            if (room.guessedCount >= Object.keys(room.scores).length - 1) {
+                clearTimeout(room.timer);
+                nextRound(socket.roomName);
+            }
         } else {
-            // Normaler Chat-Eintrag
-            io.emit('chat-message', { username: socket.username, message: data.message });
+            // Normaler Chat-Eintrag (wird für alle angezeigt)
+            io.to(socket.roomName).emit('chat-message', { username: socket.username, message: data.message });
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('Spieler verlassen:', socket.id);
-        if (socket.id && gameState.scores[socket.id]) {
-            delete gameState.scores[socket.id];
-            if (socket.id === gameState.currentDrawer) {
-                // Neuen Maler bestimmen, falls der aktuelle geht...
-                const remainingPlayers = Object.keys(gameState.scores);
-                if (remainingPlayers.length > 0) {
-                    startNewRound(remainingPlayers[0]);
-                } else {
-                    gameState.currentDrawer = null;
-                }
-            }
-            io.emit('update-scores', gameState.scores);
+        if (socket.roomName && rooms[socket.roomName]) {
+            const room = rooms[socket.roomName];
+            delete room.scores[socket.id];
+            io.to(socket.roomName).emit('update-scores', room.scores);
+            // Raum aufräumen wenn leer...
         }
     });
 });
 
-// Funktion für den Start einer neuen Runde
-function startNewRound(newDrawerId) {
-    roundsPlayed++;
-    
-    // Prüfen, ob das Spiel zu Ende ist (nach X Runden)
-    if (roundsPlayed > maxRounds) {
-        endGameAndSave();
+function startRound(roomName) {
+    const room = rooms[roomName];
+    if (!room) return;
+
+    room.currentRound++;
+    if (room.currentRound > room.maxRounds) {
+        io.to(roomName).emit('chat-message', { username: 'System', message: `🏁 Spiel beendet nach ${room.maxRounds} Runden!` });
         return;
     }
 
-    gameState.currentDrawer = newDrawerId;
-    gameState.currentWord = words[Math.floor(Math.random() * words.length)];
+    room.guessedCount = 0;
+    const playerIds = Object.keys(room.scores);
+    if (playerIds.length === 0) return;
 
-    // Dem neuen Maler sein geheimes Wort schicken
-    io.to(newDrawerId).emit('your-word', gameState.currentWord);
+    // Nächsten Maler bestimmen (Reihum)
+    const drawerIndex = (room.currentRound - 1) % playerIds.length;
+    room.currentDrawer = playerIds[drawerIndex];
+    room.currentWord = words[Math.floor(Math.random() * words.length)];
 
-    // Allen anderen sagen, dass eine neue Runde läuft
-    io.emit('new-round', { drawerId: newDrawerId });
+    // Maler das Wort senden, allen anderen die neue Runde signalisieren
+    io.to(room.currentDrawer).emit('your-word', room.currentWord);
+    io.to(roomName).emit('new-round', { drawerId: room.currentDrawer, round: room.currentRound, maxRounds: room.maxRounds });
+
+    // 2 Minuten Timer pro Runde (120000 ms)
+    clearTimeout(room.timer);
+    room.timer = setTimeout(() => {
+        io.to(roomName).emit('chat-message', { username: 'System', message: `⏰ Zeit abgelaufen! Das gesuchte Wort war: "${room.currentWord}"` });
+        nextRound(roomName);
+    }, 120000);
 }
 
-// Funktion zum Speichern der Highscores auf deiner InfinityFree-Domain
-function endGameAndSave() {
-    console.log('Spiel beendet. Sende Highscores an InfinityFree...');
-    
-    io.emit('chat-message', { username: 'System', message: '🏁 Spiel beendet! Highscores werden gespeichert...' });
-
-    fetch('https://ratsel.gamer.gd/save_maler_score.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(gameState.scores)
-    })
-    .then(res => res.json())
-    .then(data => {
-        console.log('Highscores erfolgreich aktualisiert!', data);
-        
-        // Spiel für die nächste Runde zurücksetzen
-        roundsPlayed = 0;
-        for (let id in gameState.scores) {
-            gameState.scores[id].points = 0; // Punkte zurücksetzen
-        }
-        io.emit('update-scores', gameState.scores);
-        
-        // Neue Runde mit dem ersten verfügbaren Spieler starten
-        const players = Object.keys(gameState.scores);
-        if (players.length > 0) {
-            startNewRound(players[0]);
-        }
-    })
-    .catch(err => {
-        console.error('Fehler beim Speichern der Highscores:', err);
-    });
+function nextRound(roomName) {
+    setTimeout(() => {
+        startRound(roomName);
+    }, 3000); // 3 Sekunden Pause zwischen den Runden
 }
+
+// REST-API für Admin-Wörterverwaltung im Admin-CP
+app.use(express.json());
+app.get('/api/words', (req, res) => res.json(words));
+app.post('/api/words/add', (req, res) => {
+    if (req.body.word) {
+        words.words.push(req.body.word.trim());
+        res.json({ success: true, words });
+    }
+});
+app.post('/api/words/delete', (req, res) => {
+    words = words.filter(w => w !== req.body.word);
+    res.json({ success: true, words });
+});
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server läuft auf Port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
