@@ -1,5 +1,5 @@
 const express = require('express');
-const http = require('http');
+const http = http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -55,7 +55,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        room.scores[socket.id] = { username: socket.username, points: 0 };
+        room.scores[socket.id] = { username: socket.username || 'Gast', points: 0 };
         io.to(socket.roomName).emit('update-scores', room.scores);
 
         const playerCount = Object.keys(room.scores).length;
@@ -135,27 +135,58 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        if (socket.roomName && rooms[socket.roomName]) {
-            const room = rooms[socket.roomName];
-            delete room.scores[socket.id];
-            io.to(socket.roomName).emit('update-scores', room.scores);
-            
-            const playerCount = Object.keys(room.scores).length;
-            if (!room.currentDrawer && playerCount > 0) {
-                io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
-            }
-            if (playerCount === 0) {
-                clearTimeout(room.timer);
-                delete rooms[socket.roomName];
-            }
-            io.emit('room-list-update');
-        }
+        handlePlayerLeave(socket);
     });
 });
+
+function handlePlayerLeave(socket) {
+    if (socket.roomName && rooms[socket.roomName]) {
+        const room = rooms[socket.roomName];
+        
+        if (room.scores[socket.id]) {
+            const leftName = room.scores[socket.id].username;
+            delete room.scores[socket.id];
+            
+            // Spieler sofort aus der Bestenliste/Spielerliste für alle entfernen
+            io.to(socket.roomName).emit('update-scores', room.scores);
+            io.to(socket.roomName).emit('chat-message', { username: 'System', message: `🚪 ${leftName} hat den Raum verlassen.` });
+        }
+        
+        const playerCount = Object.keys(room.scores).length;
+
+        // Wenn weniger als 2 Spieler übrig sind, Spiel abbrechen/pausieren
+        if (playerCount < 2) {
+            clearTimeout(room.timer);
+            room.currentDrawer = null;
+            room.currentRound = 0;
+            io.to(socket.roomName).emit('game-stopped', 'Zu wenig Spieler im Raum. Das Spiel wurde unterbrochen.');
+            io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
+        } else if (room.currentDrawer === socket.id) {
+            // Wenn der aktuelle Maler den Raum verlässt, Runde abbrechen und zur nächsten springen
+            clearTimeout(room.timer);
+            io.to(socket.roomName).emit('chat-message', { username: 'System', message: `⚠️ Der Maler hat den Raum verlassen!` });
+            nextRound(socket.roomName);
+        }
+
+        if (playerCount === 0) {
+            clearTimeout(room.timer);
+            delete rooms[socket.roomName];
+        }
+        
+        io.emit('room-list-update');
+    }
+}
 
 function startRound(roomName) {
     const room = rooms[roomName];
     if (!room) return;
+
+    const playerCount = Object.keys(room.scores).length;
+    if (playerCount < 2) {
+        room.currentDrawer = null;
+        io.to(roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
+        return;
+    }
 
     room.currentRound++;
     if (room.currentRound > room.maxRounds) {
@@ -166,15 +197,14 @@ function startRound(roomName) {
 
     room.guessedCount = 0;
     const playerIds = Object.keys(room.scores);
-    if (playerIds.length === 0) return;
-
+    
     const drawerIndex = (room.currentRound - 1) % playerIds.length;
     room.currentDrawer = playerIds[drawerIndex];
     room.currentWord = words[Math.floor(Math.random() * words.length)];
 
+    io.to(room.currentDrawer).emit('your-room-word', room.currentWord); // intern genutzt
     io.to(room.currentDrawer).emit('your-word', room.currentWord);
     
-    // Sende Runden-Info inkl. 120 Sekunden (2 Minuten) Zeitlimit an alle
     io.to(roomName).emit('new-round', { 
         drawerId: room.currentDrawer, 
         round: room.currentRound, 
