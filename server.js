@@ -17,7 +17,7 @@ let rooms = {}; // roomId -> { password, maxRounds, maxPlayers, currentRound, cu
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
-    // Offene Räume für die Lobby abrufen
+// Offene Räume für die Lobby abrufen
     socket.on('get-rooms', () => {
         let roomList = {};
         for (let rName in rooms) {
@@ -25,8 +25,12 @@ io.on('connection', (socket) => {
                 playerCount: io.sockets.adapter.rooms.get(rName)?.size || 0,
                 maxRounds: rooms[rName].maxRounds,
                 maxPlayers: rooms[rName].maxPlayers,
-                currentRound: rooms[rName].currentRound
+                currentRound: rooms[rName].currentRound,
+                hasPassword: !!rooms[rName].password // true, wenn ein Passwort existiert
             };
+        }
+        socket.emit('room-list', roomList);
+    });
         }
         socket.emit('room-list', roomList);
     });
