@@ -130,6 +130,7 @@
         if (!username || username.startsWith('Gast_')) {
             document.body.innerHTML = '<div style="text-align:center; margin-top:100px; font-family:Arial;"><h2 style="color:#e74c3c;">⛔ Zugriff verweigert</h2><p>Dieses Spiel ist nur für registrierte Mitglieder zugänglich.</p></div>';
         } else {
+            // Sende den Benutzernamen sofort an den Server, bevor der Raum betreten wird
             socket.emit('set-username', { username, isAdmin });
             refreshRooms();
         }
@@ -163,9 +164,10 @@
                 if (rData.hasPassword) {
                     actionsHtml += `<input type="password" id="pass-${safeId}" placeholder="Passwort...">`;
                 }
-                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}', ${rData.hasPassword})">Beitreten</button></div>`;
+                // Übergibt den Raum und die bereits im Raum hinterlegten maxRounds, damit sie beim Beitreten erhalten bleiben
+                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}', ${rData.hasPassword}, ${rData.maxRounds}, ${rData.maxPlayers})">Beitreten</button></div>`;
 
-                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler | ${rData.maxRounds} Runden</span></div>` + actionsHtml;
+                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount}/${rData.maxPlayers} Spieler | ${rData.maxRounds} Runden</span></div>` + actionsHtml;
                 listUl.appendChild(li);
             });
         });
@@ -183,7 +185,7 @@
             enterRoom(roomName, password, totalRounds, maxPlayers);
         }
 
-        function joinSpecificRoom(roomName, safeId, hasPassword) {
+        function joinSpecificRoom(roomName, safeId, hasPassword, maxRounds, maxPlayers) {
             let password = '';
             if (hasPassword) {
                 const passInput = document.getElementById(`pass-${safeId}`);
@@ -191,10 +193,12 @@
                     password = passInput.value;
                 }
             }
-            enterRoom(roomName, password, 5, 2);
+            enterRoom(roomName, password, maxRounds, maxPlayers);
         }
 
         function enterRoom(roomName, password, totalRounds, maxPlayers) {
+            // Sicherstellen, dass der Username vor dem Beitritt übergeben wird
+            socket.emit('set-username', { username, isAdmin });
             socket.emit('join-room', { roomName, password, totalRounds, maxPlayers });
 
             document.getElementById('lobby-screen').style.display = 'none';
@@ -291,7 +295,7 @@
 
         socket.on('new-round', (data) => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            startTimer(data.duration); // Timer starten (120 Sekunden)
+            startTimer(data.duration);
 
             if (data.drawerId === socket.id) {
                 isMyTurn = true;
