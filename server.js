@@ -17,7 +17,7 @@ let rooms = {}; // roomId -> { password, maxRounds, maxPlayers, currentRound, cu
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
-// Offene Räume für die Lobby abrufen
+    // Offene Räume für die Lobby abrufen
     socket.on('get-rooms', () => {
         let roomList = {};
         for (let rName in rooms) {
@@ -28,9 +28,6 @@ io.on('connection', (socket) => {
                 currentRound: rooms[rName].currentRound,
                 hasPassword: !!rooms[rName].password // true, wenn ein Passwort existiert
             };
-        }
-        socket.emit('room-list', roomList);
-    });
         }
         socket.emit('room-list', roomList);
     });
@@ -52,6 +49,7 @@ io.on('connection', (socket) => {
                 guessedCount: 0,
                 timer: null
             };
+            io.emit('room-list-update');
         }
 
         const room = rooms[socket.roomName];
@@ -75,6 +73,8 @@ io.on('connection', (socket) => {
             // Warten-Status an alle im Raum senden
             io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
         }
+        
+        io.emit('room-list-update');
     });
 
     socket.on('set-username', (data) => {
@@ -160,6 +160,7 @@ io.on('connection', (socket) => {
                 clearTimeout(room.timer);
                 delete rooms[socket.roomName];
             }
+            io.emit('room-list-update');
         }
     });
 });
@@ -203,7 +204,7 @@ app.use(express.json());
 app.get('/api/words', (req, res) => res.json(words));
 app.post('/api/words/add', (req, res) => {
     if (req.body.word) {
-        words.push(req.body.word.trim()); // Korrigiert
+        words.push(req.body.word.trim());
         res.json({ success: true, words });
     }
 });
