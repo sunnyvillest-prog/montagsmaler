@@ -111,7 +111,7 @@
         </div>
     </div>
 
-    <script>
+  <script>
         const socket = io();
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -143,14 +143,15 @@
                 const rData = rooms[rName];
                 const li = document.createElement('li');
                 
-                // Rauminfo mit Schloss-Symbol, falls passwortgeschützt
+                // Sichere ID fürs Passwortfeld erzeugen (Leerzeichen/Sonderzeichen entfernen)
+                const safeId = rName.replace(/[^a-zA-Z0-9_-]/g, '_');
                 let lockIcon = rData.hasPassword ? ' 🔒' : '';
                 
                 let actionsHtml = `<div class="room-actions">`;
                 if (rData.hasPassword) {
-                    actionsHtml += `<input type="password" id="pass-${rName}" placeholder="Passwort...">`;
+                    actionsHtml += `<input type="password" id="pass-${safeId}" placeholder="Passwort...">`;
                 }
-                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', ${rData.hasPassword})">Beitreten</button></div>`;
+                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}', ${rData.hasPassword})">Beitreten</button></div>`;
 
                 li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler</span></div>` + actionsHtml;
                 listUl.appendChild(li);
@@ -169,10 +170,10 @@
             enterRoom(roomName, password, maxPlayers);
         }
 
-        function joinSpecificRoom(roomName, hasPassword) {
+        function joinSpecificRoom(roomName, safeId, hasPassword) {
             let password = '';
             if (hasPassword) {
-                const passInput = document.getElementById(`pass-${roomName}`);
+                const passInput = document.getElementById(`pass-${safeId}`);
                 if (passInput) {
                     password = passInput.value;
                 }
