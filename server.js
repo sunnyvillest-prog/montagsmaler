@@ -1,5 +1,5 @@
 const express = require('express');
-const http = http = require('http');
+const http = require('http'); // Kleine Korrektur hier (war doppelt: http = http = 'http')
 const { Server } = require('socket.io');
 
 const app = express();
@@ -18,6 +18,10 @@ let gameState = {
     currentWord: "",
     scores: {}
 };
+
+// Runden-Zähler für das Spielende
+let roundsPlayed = 0;
+const maxRounds = 5; // Nach 5 Runden werden die Highscores an dein Forum gesendet
 
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
@@ -53,7 +57,7 @@ io.on('connection', (socket) => {
             // Richtig geraten! Punkte vergeben
             io.emit('chat-message', { username: 'System', message: `🎉 ${socket.username} hat das Wort "${gameState.currentWord}" erraten!` });
             
-            gameState.scores[socket.id].points += 10; // 10 Punkte für den Raten
+            gameState.scores[socket.id].points += 10; // 10 Punkte für das Raten
             io.emit('update-scores', gameState.scores);
 
             // Nächste Runde starten
@@ -82,6 +86,14 @@ io.on('connection', (socket) => {
 
 // Funktion für den Start einer neuen Runde
 function startNewRound(newDrawerId) {
+    roundsPlayed++;
+    
+    // Prüfen, ob das Spiel zu Ende ist (nach X Runden)
+    if (roundsPlayed > maxRounds) {
+        endGameAndSave();
+        return;
+    }
+
     gameState.currentDrawer = newDrawerId;
     gameState.currentWord = words[Math.floor(Math.random() * words.length)];
 
@@ -90,6 +102,39 @@ function startNewRound(newDrawerId) {
 
     // Allen anderen sagen, dass eine neue Runde läuft
     io.emit('new-round', { drawerId: newDrawerId });
+}
+
+// Funktion zum Speichern der Highscores auf deiner InfinityFree-Domain
+function endGameAndSave() {
+    console.log('Spiel beendet. Sende Highscores an InfinityFree...');
+    
+    io.emit('chat-message', { username: 'System', message: '🏁 Spiel beendet! Highscores werden gespeichert...' });
+
+    fetch('https://ratsel.gamer.gd/save_maler_score.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gameState.scores)
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log('Highscores erfolgreich aktualisiert!', data);
+        
+        // Spiel für die nächste Runde zurücksetzen
+        roundsPlayed = 0;
+        for (let id in gameState.scores) {
+            gameState.scores[id].points = 0; // Punkte zurücksetzen
+        }
+        io.emit('update-scores', gameState.scores);
+        
+        // Neue Runde mit dem ersten verfügbaren Spieler starten
+        const players = Object.keys(gameState.scores);
+        if (players.length > 0) {
+            startNewRound(players[0]);
+        }
+    })
+    .catch(err => {
+        console.error('Fehler beim Speichern der Highscores:', err);
+    });
 }
 
 const PORT = process.env.PORT || 3000;
