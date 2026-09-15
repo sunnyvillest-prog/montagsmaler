@@ -1,5 +1,5 @@
 const express = require('express');
-const http = require('http');
+const http = http = require('http'); // Falls du http/express nutzt wie bisher:
 const { Server } = require('socket.io');
 
 const app = express();
@@ -8,16 +8,12 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(__dirname));
 
-// Wortliste
 let words = ["Apfel", "Auto", "Gitarre", "Haus", "Sonne", "Baum", "Computer", "Katze"];
-
-// Aktive Räume
-let rooms = {}; // roomId -> { password, maxRounds, maxPlayers, currentRound, currentDrawer, currentWord, scores, guessedCount, timer }
+let rooms = {}; 
 
 io.on('connection', (socket) => {
     console.log('Spieler verbunden:', socket.id);
 
-    // Offene Räume für die Lobby abrufen
     socket.on('get-rooms', () => {
         let roomList = {};
         for (let rName in rooms) {
@@ -26,13 +22,12 @@ io.on('connection', (socket) => {
                 maxRounds: rooms[rName].maxRounds,
                 maxPlayers: rooms[rName].maxPlayers,
                 currentRound: rooms[rName].currentRound,
-                hasPassword: !!rooms[rName].password // true, wenn ein Passwort existiert
+                hasPassword: !!rooms[rName].password
             };
         }
         socket.emit('room-list', roomList);
     });
 
-    // Raum beitreten oder erstellen mit Rundenwahl, Passwort & Spielerlimit
     socket.on('join-room', ({ roomName, password, totalRounds, maxPlayers }) => {
         socket.roomName = roomName || 'lobby';
         socket.join(socket.roomName);
@@ -40,8 +35,8 @@ io.on('connection', (socket) => {
         if (!rooms[socket.roomName]) {
             rooms[socket.roomName] = {
                 password: password || '',
-                maxRounds: Math.min(Math.max(totalRounds || 5, 5), 15),
-                maxPlayers: Math.min(Math.max(parseInt(maxPlayers) || 2, 2), 10), // Mind. 2, max. 10 Spieler
+                maxRounds: Math.min(Math.max(parseInt(totalRounds) || 5, 5), 20), // 5 bis 20 Runden
+                maxPlayers: Math.min(Math.max(parseInt(maxPlayers) || 2, 2), 10),
                 currentRound: 0,
                 currentDrawer: null,
                 currentWord: '',
@@ -54,7 +49,6 @@ io.on('connection', (socket) => {
 
         const room = rooms[socket.roomName];
 
-        // Passwort-Check falls gesetzt
         if (room.password && room.password !== password) {
             socket.emit('error-msg', 'Falsches Passwort für diesen Raum!');
             socket.leave(socket.roomName);
@@ -66,11 +60,9 @@ io.on('connection', (socket) => {
 
         const playerCount = Object.keys(room.scores).length;
 
-        // Spiel starten, wenn die gewünschte Spieleranzahl erreicht ist und noch kein Spiel läuft
         if (!room.currentDrawer && playerCount >= room.maxPlayers) {
             startRound(socket.roomName);
         } else if (!room.currentDrawer) {
-            // Warten-Status an alle im Raum senden
             io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
         }
         
@@ -86,7 +78,6 @@ io.on('connection', (socket) => {
         socket.isAdmin = data.isAdmin || false;
     });
 
-    // Mal-Daten innerhalb des Raumes weiterleiten
     socket.on('draw', (data) => {
         if (!socket.roomName) return;
         socket.to(socket.roomName).emit('draw', data);
@@ -97,7 +88,6 @@ io.on('connection', (socket) => {
         socket.to(socket.roomName).emit('clear');
     });
 
-    // Chat, Raten und Admin-Befehle
     socket.on('chat-message', (data) => {
         if (!socket.username || !socket.roomName) return;
         const room = rooms[socket.roomName];
@@ -105,7 +95,6 @@ io.on('connection', (socket) => {
 
         const messageText = data.message.trim();
 
-        // Admin Ban Befehl
         if (socket.isAdmin && messageText.startsWith('/ban ')) {
             const targetName = messageText.substring(5).trim().toLowerCase();
             for (let [id, targetSocket] of io.of('/').sockets) {
@@ -122,7 +111,6 @@ io.on('connection', (socket) => {
         const guess = messageText.toLowerCase();
         const correctWord = room.currentWord.toLowerCase();
 
-        // Prüfen ob richtig geraten
         if (guess === correctWord && socket.id !== room.currentDrawer) {
             io.to(socket.roomName).emit('chat-message', { username: 'System', message: `🎉 ${socket.username} hat das Wort erraten!` });
 
@@ -172,6 +160,7 @@ function startRound(roomName) {
     room.currentRound++;
     if (room.currentRound > room.maxRounds) {
         io.to(roomName).emit('chat-message', { username: 'System', message: `🏁 Spiel beendet nach ${room.maxRounds} Runden!` });
+        io.to(roomName).emit('game-over');
         return;
     }
 
@@ -187,6 +176,7 @@ function startRound(roomName) {
     io.to(roomName).emit('new-round', { drawerId: room.currentDrawer, round: room.currentRound, maxRounds: room.maxRounds });
 
     clearTimeout(room.timer);
+    // Exakt 2 Minuten Zeit pro Runde
     room.timer = setTimeout(() => {
         io.to(roomName).emit('chat-message', { username: 'System', message: `⏰ Zeit abgelaufen! Das gesuchte Wort war: "${room.currentWord}"` });
         nextRound(roomName);
@@ -199,7 +189,6 @@ function nextRound(roomName) {
     }, 3000);
 }
 
-// REST-API für Admin-Wörterverwaltung
 app.use(express.json());
 app.get('/api/words', (req, res) => res.json(words));
 app.post('/api/words/add', (req, res) => {
