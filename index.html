@@ -8,7 +8,6 @@
 <style>
         body { font-family: Arial, sans-serif; background: transparent; margin: 0; padding: 10px; color: #333; }
         
-        /* Lobby / Raum-Auswahl: Passt sich dem Inhalt an ohne Überhang */
         #lobby-screen { width: 100%; max-width: 800px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); box-sizing: border-box; display: flex; flex-direction: column; }
         .lobby-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; text-align: center; }
         .lobby-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
@@ -25,7 +24,6 @@
         #room-list-ul li button { background: #3498db; padding: 7px 14px; font-size: 12px; border: none; color: white; border-radius: 3px; cursor: pointer; font-weight: bold; }
         #room-list-ul li button:hover { background: #2980b9; }
 
-        /* Eigentliches Spiel-Layout */
         #game-screen { display: none; width: 100%; max-width: 1100px; margin: 0 auto; box-sizing: border-box; }
         .container { width: 100%; display: flex; gap: 15px; box-sizing: border-box; }
         .game-area { flex: 2; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
@@ -59,8 +57,13 @@
             <h3>Neuen Raum erstellen</h3>
             <input type="text" id="new-room-name" placeholder="Raumname (z.B. Expertenrunde)"><br>
             <input type="password" id="new-room-pass" placeholder="Passwort (optional)"><br>
+            
+            <label style="font-size: 13px; color: #555; display: block; margin-bottom: 5px;">Anzahl Runden (5 - 20):</label>
+            <input type="number" id="new-room-rounds" min="5" max="20" value="5"><br>
+
             <label style="font-size: 13px; color: #555; display: block; margin-bottom: 5px;">Benötigte Spieler zum Start (2 - 10):</label>
             <input type="number" id="new-room-players" min="2" max="10" value="2"><br>
+            
             <button onclick="createRoom()">Raum erstellen & Beitreten</button>
         </div>
 
@@ -125,7 +128,6 @@
             refreshRooms();
         }
 
-        // Automatische Aktualisierung der Raumliste, wenn sich Räume ändern
         socket.on('room-list-update', () => {
             refreshRooms();
         });
@@ -157,7 +159,7 @@
                 }
                 actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}', ${rData.hasPassword})">Beitreten</button></div>`;
 
-                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler</span></div>` + actionsHtml;
+                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler | ${rData.maxRounds} Runden</span></div>` + actionsHtml;
                 listUl.appendChild(li);
             });
         });
@@ -165,13 +167,14 @@
         function createRoom() {
             const roomName = document.getElementById('new-room-name').value.trim();
             const password = document.getElementById('new-room-pass').value;
+            const totalRounds = document.getElementById('new-room-rounds').value;
             const maxPlayers = document.getElementById('new-room-players').value;
             
             if (!roomName) {
                 alert('Bitte gib einen Raumnamen ein!');
                 return;
             }
-            enterRoom(roomName, password, maxPlayers);
+            enterRoom(roomName, password, totalRounds, maxPlayers);
         }
 
         function joinSpecificRoom(roomName, safeId, hasPassword) {
@@ -182,11 +185,11 @@
                     password = passInput.value;
                 }
             }
-            enterRoom(roomName, password, 2);
+            enterRoom(roomName, password, 5, 2);
         }
 
-        function enterRoom(roomName, password, maxPlayers) {
-            socket.emit('join-room', { roomName, password, totalRounds: 5, maxPlayers });
+        function enterRoom(roomName, password, totalRounds, maxPlayers) {
+            socket.emit('join-room', { roomName, password, totalRounds, maxPlayers });
 
             document.getElementById('lobby-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
@@ -266,12 +269,21 @@
             } else {
                 isMyTurn = false;
                 document.getElementById('drawing-tools').style.display = 'none';
-                document.getElementById('word-display').innerText = "Rate den Begriff im Chat!";
+                document.getElementById('word-display').innerText = `Runde ${data.round}/${data.maxRounds}: Rate den Begriff im Chat!`;
             }
         });
 
         socket.on('your-word', (word) => {
             document.getElementById('word-display').innerText = `Du musst malen: ${word.toUpperCase()}`;
+        });
+
+        socket.on('game-over', () => {
+            isMyTurn = false;
+            document.getElementById('drawing-tools').style.display = 'none';
+            document.getElementById('word-display').innerText = "Spiel beendet! Du kannst in die Lobby zurückkehren.";
+            setTimeout(() => {
+                window.location.reload();
+            }, 5000);
         });
 
         function sendChat(e) {
