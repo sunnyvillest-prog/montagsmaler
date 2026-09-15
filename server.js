@@ -4,36 +4,36 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: { origin: "*" } // Erlaubt Verbindungen von deiner Foren-Domain
+});
 
-// Damit der Server unsere Webseite (das Frontend) laden kann
-app.use(express.static('public'));
+app.use(express.static('public')); // Hier liegen später HTML/JS für das Spiel
 
-// Wenn sich ein Spieler verbindet
 io.on('connection', (socket) => {
-    console.log('Ein Spieler hat sich verbunden: ' + socket.id);
+    console.log('Ein Spieler verbunden:', socket.id);
 
-    // Wenn ein Spieler malt, leite die Daten an alle anderen weiter
-    socket.on('drawing', (data) => {
-        socket.broadcast.emit('drawing', data);
+    // Mal-Daten an alle anderen im Raum senden
+    socket.on('draw', (data) => {
+        socket.broadcast.emit('draw', data);
     });
 
-    // Wenn ein Spieler das Bild löscht
+    // Canvas leeren
     socket.on('clear', () => {
-        io.emit('clear');
+        socket.broadcast.emit('clear');
     });
 
-    // Wenn eine Chat-Nachricht geschickt wird
-    socket.on('chat-message', (msg) => {
-        io.emit('chat-message', msg);
+    // Chat / Raten
+    socket.on('chat-message', (data) => {
+        io.emit('chat-message', data); // An alle im Raum senden
     });
 
     socket.on('disconnect', () => {
-        console.log('Ein Spieler hat das Spiel verlassen.');
+        console.log('Spieler hat verlassen:', socket.id);
     });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server läuft! Öffne im Browser: http://localhost:${PORT}`);
+    console.log(`Montagsmaler läuft auf Port ${PORT}`);
 });
