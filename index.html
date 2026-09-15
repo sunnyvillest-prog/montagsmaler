@@ -7,6 +7,19 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        
+        /* Lobby / Raum-Auswahl Overlay */
+        #lobby-screen { max-width: 600px; margin: 50px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+        .lobby-section { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        .lobby-section input, .lobby-section select { padding: 10px; font-size: 14px; width: 80%; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .lobby-section button { padding: 10px 20px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .lobby-section button:hover { background: #27ae60; }
+        #room-list-ul { list-style: none; padding: 0; text-align: left; max-height: 150px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; }
+        #room-list-ul li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        #room-list-ul li button { background: #3498db; padding: 5px 10px; font-size: 12px; }
+
+        /* Eigentliches Spiel (wird erst nach Raum-Beitritt eingeblendet) */
+        #game-screen { display: none; }
         .container { max-width: 100%; margin: 0 auto; display: flex; gap: 15px; padding: 0; box-sizing: border-box; }
         .game-area { flex: 2; background: white; padding: 10px; }
         .sidebar { flex: 1; display: flex; flex-direction: column; gap: 15px; }
@@ -30,63 +43,139 @@
 </head>
 <body>
 
-    <div class="container">
-        <!-- Zeichnen & Spielbereich -->
-        <div class="game-area">
-            <div id="word-display">Warte auf Mitspieler...</div>
-            
-            <canvas id="canvas" width="560" height="400"></canvas>
-            
-            <div class="tools" id="drawing-tools" style="display: none;">
-                <button onclick="setColor('black')">Schwarz</button>
-                <button onclick="setColor('red')">Rot</button>
-                <button onclick="setColor('blue')">Blau</button>
-                <button onclick="clearCanvas()">Löschen</button>
-            </div>
+    <!-- 1. LOBBY & RAUM-AUSWAHL SCREEN -->
+    <div id="lobby-screen">
+        <h2>🎨 Montagsmaler - Spielräume</h2>
+        <p>Wähle einen bestehenden Raum oder erstelle einen neuen:</p>
+        
+        <div class="lobby-section">
+            <h3>Neuen Raum erstellen</h3>
+            <input type="text" id="new-room-name" placeholder="Raumname (z.B. Expertenrunde)"><br>
+            <input type="password" id="new-room-pass" placeholder="Passwort (optional)"><br>
+            <button onclick="createRoom()">Raum erstellen & Beitreten</button>
         </div>
 
-        <!-- Sidebar: Highscores & Chat -->
-        <div class="sidebar">
-            <div class="card">
-                <h3>🏆 Live-Punkte</h3>
-                <ul id="score-list" class="score-list">
-                    <li>Lade Bestenliste...</li>
-                </ul>
+        <div class="lobby-section" style="border:none; margin-bottom:0;">
+            <h3>Aktive Räume</h3>
+            <button onclick="refreshRooms()" style="background:#e67e22; margin-bottom:10px; padding:6px 12px; font-size:12px;">Aktualisieren</button>
+            <ul id="room-list-ul">
+                <li>Lade Räume...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 2. EIGENTLICHER SPIEL-SCREEN -->
+    <div id="game-screen">
+        <div class="container">
+            <!-- Zeichnen & Spielbereich -->
+            <div class="game-area">
+                <div id="word-display">Warte auf Mitspieler...</div>
+                
+                <canvas id="canvas" width="560" height="400"></canvas>
+                
+                <div class="tools" id="drawing-tools" style="display: none;">
+                    <button onclick="setColor('black')">Schwarz</button>
+                    <button onclick="setColor('red')">Rot</button>
+                    <button onclick="setColor('blue')">Blau</button>
+                    <button onclick="clearCanvas()">Löschen</button>
+                </div>
             </div>
 
-            <div class="card" style="padding: 0; overflow: hidden;">
-                <div style="padding: 10px 15px; background: #2c3e50; color: white; font-weight: bold; font-size: 14px;">Chat & Raten</div>
-                <div class="chat-box">
-                    <ul id="messages"></ul>
-                    <form class="chat-input-area" onsubmit="sendChat(event)">
-                        <input id="chat-input" autocomplete="off" placeholder="Begriff hier raten oder Admin-Befehl..." />
-                        <button type="submit">Senden</button>
-                    </form>
+            <!-- Sidebar: Highscores & Chat -->
+            <div class="sidebar">
+                <div class="card">
+                    <h3>🏆 Live-Punkte</h3>
+                    <ul id="score-list" class="score-list">
+                        <li>Lade Bestenliste...</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="padding: 0; overflow: hidden;">
+                    <div style="padding: 10px 15px; background: #2c3e50; color: white; font-weight: bold; font-size: 14px;">Chat & Raten</div>
+                    <div class="chat-box">
+                        <ul id="messages"></ul>
+                        <form class="chat-input-area" onsubmit="sendChat(event)">
+                            <input id="chat-input" autocomplete="off" placeholder="Begriff hier raten oder Admin-Befehl..." />
+                            <button type="submit">Senden</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-   <script>
+    <script>
         const socket = io();
 
-        // Benutzername und Admin-Status sicher aus der URL auslesen
+        // Benutzername und Admin-Status aus der URL
         const urlParams = new URLSearchParams(window.location.search);
         const username = urlParams.get('user');
         const isAdmin = urlParams.get('admin') === '1';
 
-        // Gäste oder fehlende Usernamen sofort abfangen und blockieren
         if (!username || username.startsWith('Gast_')) {
             document.body.innerHTML = '<div style="text-align:center; margin-top:100px; font-family:Arial;"><h2 style="color:#e74c3c;">⛔ Zugriff verweigert</h2><p>Dieses Spiel ist nur für registrierte Mitglieder zugänglich.</p></div>';
         } else {
-            // 1. Anmeldedaten an den Server senden
             socket.emit('set-username', { username, isAdmin });
-
-            // 2. Direkt der Standard-Lobby beitreten, damit das Spiel startet!
-            socket.emit('join-room', { roomName: 'lobby', password: '', totalRounds: 5 });
+            // Direkt beim Start die Raumliste abfragen
+            refreshRooms();
         }
 
-        // Falls ein Admin den Spieler bannt / kickt
+        // Raumliste vom Server empfangen
+        function refreshRooms() {
+            socket.emit('get-rooms');
+        }
+
+        socket.on('room-list', (rooms) => {
+            const listUl = document.getElementById('room-list-ul');
+            listUl.innerHTML = '';
+            
+            const roomKeys = Object.keys(rooms);
+            if (roomKeys.length === 0) {
+                listUl.innerHTML = '<li style="color:#7f8c8d; text-align:center;">Keine aktiven Räume. Erstelle einfach einen neuen!</li>';
+                return;
+            }
+
+            roomKeys.forEach(rName => {
+                const rData = rooms[rName];
+                const li = document.createElement('li');
+                li.innerHTML = `<span><strong>${rName}</strong> (${rData.playerCount} Spieler)</span> <button onclick="joinSpecificRoom('${rName}')">Beitreten</button>`;
+                listUl.appendChild(li);
+            });
+        });
+
+        function createRoom() {
+            const roomName = document.getElementById('new-room-name').value.trim();
+            const password = document.getElementById('new-room-pass').value;
+            if (!roomName) {
+                alert('Bitte gib einen Raumnamen ein!');
+                return;
+            }
+            enterRoom(roomName, password);
+        }
+
+        function joinSpecificRoom(roomName) {
+            let password = '';
+            // Falls der Raum geschützt ist, könnte man hier optional nach Passwort fragen (oder leer lassen)
+            enterRoom(roomName, password);
+        }
+
+        function enterRoom(roomName, password) {
+            // Raum betreten anfragen
+            socket.emit('join-room', { roomName, password, totalRounds: 5 });
+
+            // UI umschalten: Lobby ausblenden, Spielfeld einblenden
+            document.getElementById('lobby-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+        }
+
+        // Fehlermeldung bei falschem Passwort etc.
+        socket.on('error-msg', (msg) => {
+            alert(msg);
+            // Zurück zur Lobby
+            document.getElementById('lobby-screen').style.display = 'block';
+            document.getElementById('game-screen').style.display = 'none';
+        });
+
         socket.on('banned', (reason) => {
             alert(reason);
             window.location.href = 'about:blank';
@@ -117,11 +206,9 @@
             ctx.beginPath();
             ctx.moveTo(x, y);
 
-            // Koordinaten an den Server senden
             socket.emit('draw', { x, y, color: currentColor });
         }
 
-        // Zeichnungen von anderen Spielern empfangen
         socket.on('draw', (data) => {
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
@@ -145,7 +232,6 @@
             currentColor = color;
         }
 
-        // Runden-Steuerung: Wer ist dran?
         socket.on('new-round', (data) => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (data.drawerId === socket.id) {
@@ -158,12 +244,10 @@
             }
         });
 
-        // Wenn ich der Maler bin, bekomme ich das geheime Wort
         socket.on('your-word', (word) => {
             document.getElementById('word-display').innerText = `Du musst malen: ${word.toUpperCase()}`;
         });
 
-        // Chat-Nachrichten senden & empfangen
         function sendChat(e) {
             e.preventDefault();
             const input = document.getElementById('chat-input');
@@ -181,7 +265,6 @@
             messages.scrollTop = messages.scrollHeight;
         });
 
-        // Live-Punktestand aktualisieren
         socket.on('update-scores', (scores) => {
             const scoreList = document.getElementById('score-list');
             scoreList.innerHTML = '';
