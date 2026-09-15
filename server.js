@@ -31,15 +31,16 @@ io.on('connection', (socket) => {
         socket.emit('room-list', roomList);
     });
 
-    // Raum beitreten oder erstellen mit Rundenwahl & Passwort
-    socket.on('join-room', ({ roomName, password, totalRounds }) => {
+// Raum beitreten oder erstellen mit Rundenwahl, Passwort & Spielerlimit
+    socket.on('join-room', ({ roomName, password, totalRounds, maxPlayers }) => {
         socket.roomName = roomName || 'lobby';
         socket.join(socket.roomName);
 
         if (!rooms[socket.roomName]) {
             rooms[socket.roomName] = {
                 password: password || '',
-                maxRounds: Math.min(Math.max(totalRounds || 5, 5), 15), // Zwischen 5 und 15 Runden
+                maxRounds: Math.min(Math.max(totalRounds || 5, 5), 15),
+                maxPlayers: Math.min(Math.max(parseInt(maxPlayers) || 2, 2), 10), // Mind. 2, max. 10 Spieler zum Start
                 currentRound: 0,
                 currentDrawer: null,
                 currentWord: '',
@@ -48,6 +49,29 @@ io.on('connection', (socket) => {
                 timer: null
             };
         }
+
+        const room = rooms[socket.roomName];
+
+        // Passwort-Check falls gesetzt
+        if (room.password && room.password !== password) {
+            socket.emit('error-msg', 'Falsches Passwort für diesen Raum!');
+            socket.leave(socket.roomName);
+            return;
+        }
+
+        room.scores[socket.id] = { username: socket.username, points: 0 };
+        io.to(socket.roomName).emit('update-scores', room.scores);
+
+        const playerCount = Object.keys(room.scores).length;
+
+        // Spiel starten, wenn die gewünschte Spieleranzahl erreicht ist und noch kein Spiel läuft
+        if (!room.currentDrawer && playerCount >= room.maxPlayers) {
+            startRound(socket.roomName);
+        } else if (!room.currentDrawer) {
+            // Warten-Status an alle im Raum senden
+            io.to(socket.roomName).emit('waiting-status', { current: playerCount, target: room.maxPlayers });
+        }
+    }
 
         const room = rooms[socket.roomName];
 
