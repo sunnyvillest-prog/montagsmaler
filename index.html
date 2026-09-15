@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Forum2all - Live Montagsmaler</title>
+    <title>Live Montagsmaler</title>
     <!-- Socket.io Client -->
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -59,7 +59,7 @@
                 <div class="chat-box">
                     <ul id="messages"></ul>
                     <form class="chat-input-area" onsubmit="sendChat(event)">
-                        <input id="chat-input" autocomplete="off" placeholder="Begriff hier raten..." />
+                        <input id="chat-input" autocomplete="off" placeholder="Begriff hier raten oder Admin-Befehl..." />
                         <button type="submit">Senden</button>
                     </form>
                 </div>
@@ -70,12 +70,24 @@
     <script>
         const socket = io();
 
-        // Benutzername aus der URL holen (wird später vom Forum übergeben, z.B. maler.html?user=Raab)
+        // Benutzername und Admin-Status sicher aus der URL auslesen
         const urlParams = new URLSearchParams(window.location.search);
-        const username = urlParams.get('user') || 'Gast_' + Math.floor(Math.random() * 1000);
+        const username = urlParams.get('user');
+        const isAdmin = urlParams.get('admin') === '1';
 
-        // Beim Server anmelden
-        socket.emit('set-username', username);
+        // Gäste oder fehlende Usernamen sofort abfangen und blockieren
+        if (!username || username.startsWith('Gast_')) {
+            document.body.innerHTML = '<div style="text-align:center; margin-top:100px; font-family:Arial;"><h2 style="color:#e74c3c;">⛔ Zugriff verweigert</h2><p>Dieses Spiel ist nur für registrierte Mitglieder zugänglich.</p></div>';
+        } else {
+            // Anmeldedaten (Name + Admin-Rechte) an den Node.js-Server senden
+            socket.emit('set-username', { username, isAdmin });
+        }
+
+        // Falls ein Admin den Spieler bannt / kickt
+        socket.on('banned', (reason) => {
+            alert(reason);
+            window.location.href = 'about:blank'; // Fenster leeren oder schließen
+        });
 
         // Canvas Setup
         const canvas = document.getElementById('canvas');
