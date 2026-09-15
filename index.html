@@ -143,18 +143,17 @@ roomKeys.forEach(rName => {
                 const rData = rooms[rName];
                 const li = document.createElement('li');
                 
-                // Sichere ID fürs Passwortfeld erzeugen
-                const safeId = rName.replace(/[^a-zA-Z0-9_-]/g, '_');
-                
-                // Wir zeigen das Schloss-Symbol an, falls rData.hasPassword existiert oder true ist
-                let lockIcon = (rData.hasPassword || rData.password) ? ' 🔒' : '';
-                
-                // Wir rendern jetzt für jeden Raum standardmäßig ein Passwort-Eingabefeld
-                let actionsHtml = `<div class="room-actions">`;
-                actionsHtml += `<input type="password" id="pass-${safeId}" placeholder="Passwort...">`;
-                actionsHtml += `<button onclick="joinSpecificRoom('${rName}', '${safeId}')">Beitreten</button></div>`;
-
-                li.innerHTML = `<div class="room-info"><strong>${rName}</strong>${lockIcon} <br><span style="font-size:12px; color:#7f8c8d;">${rData.playerCount} Spieler</span></div>` + actionsHtml;
+                // Wir bauen ein direktes Eingabefeld ein
+                li.innerHTML = `
+                    <div class="room-info">
+                        <strong>${rName}</strong> 🔒 <br>
+                        <span style="font-size:12px; color:#7f8c8d;">${rData.playerCount || 0} Spieler</span>
+                    </div>
+                    <div class="room-actions">
+                        <input type="password" id="pass-${rName}" placeholder="Passwort hier..." style="border: 2px solid red; width: 140px;">
+                        <button onclick="enterRoom('${rName}', document.getElementById('pass-${rName}').value, 2)">Beitreten</button>
+                    </div>
+                `;
                 listUl.appendChild(li);
             });
 
